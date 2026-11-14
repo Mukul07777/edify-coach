@@ -30,7 +30,7 @@ from typing import Any
 VERSION = "1.0.0"
 IST = timezone(timedelta(hours=5, minutes=30))
 DATA = Path(os.environ.get("COACH_DATA") or "/data") / "edify-coach"
-MEMORY = DATA / "memory.json"
+MEMORY = DATA / "memory.json"  # one student per machine on Maritime
 LLM_TIMEOUT = 18  # seconds: Maritime gives a chat turn 30
 REVISE_AFTER = (1, 3, 7)  # days after a lecture to revise it again
 NIGHTLY = {"id": "nightly-review", "cron": "30 21 * * *", "tz": "Asia/Kolkata",
@@ -53,18 +53,26 @@ def _today() -> date:
     return datetime.now(IST).date()
 
 
-def load() -> dict[str, Any]:
+def _file(student: str | None) -> Path:
+    """On Maritime a machine holds one student. One coach serving several (a PC standing in for Maritime) keeps
+    each student's memory apart, by the id Edify sends."""
+    safe = re.sub(r"[^A-Za-z0-9_-]", "", student or "")[:60]
+    return DATA / "students" / safe / "memory.json" if safe else MEMORY
+
+
+def load(student: str | None = None) -> dict[str, Any]:
     try:
-        return {**_blank(), **json.loads(MEMORY.read_text(encoding="utf-8"))}
+        return {**_blank(), **json.loads(_file(student).read_text(encoding="utf-8"))}
     except (OSError, ValueError):
         return _blank()
 
 
-def save(mem: dict[str, Any]) -> None:
-    DATA.mkdir(parents=True, exist_ok=True)
-    tmp = MEMORY.with_suffix(".tmp")
+def save(mem: dict[str, Any], student: str | None = None) -> None:
+    path = _file(student)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(mem, ensure_ascii=False, indent=1), encoding="utf-8")
-    tmp.replace(MEMORY)  # all or nothing: a reboot mid-write never leaves half a memory
+    tmp.replace(path)  # all or nothing: a reboot mid-write never leaves half a memory
 
 
 # ---------------------------------------------------------------------------------------------------- the model
@@ -267,7 +275,8 @@ def handle(message: str, source: str | None) -> dict[str, Any]:
         event = {"type": "review", "reason": "nightly"} if source == "scheduled" else {"type": "ask", "question": message}
     kind = event.get("type")
     with _lock:
-        mem = load()
+        student = event.get("student_id")
+        mem = load(student)
         if kind == "ask":
             out = answer(mem, str(event.get("question") or ""))
         elif kind in JOBS:
@@ -277,7 +286,7 @@ def handle(message: str, source: str | None) -> dict[str, Any]:
         else:
             return {"error": f"unknown event {kind!r}"}
         if kind != "state":
-            save(mem)
+            save(mem, student)
         out["state"] = state(mem)
     return out
 

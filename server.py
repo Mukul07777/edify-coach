@@ -151,7 +151,7 @@ def _voice(mem: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------------------------------- the jobs
 def sync(mem: dict[str, Any], event: dict[str, Any]) -> dict[str, Any]:
     """Edify's latest picture of the student: profile, open weak spots, recent mock tests and lectures."""
-    for key in ("student", "weak", "mocks", "sessions", "gaps"):
+    for key in ("student", "weak", "mocks", "sessions", "gaps", "suspects"):
         if key in event:
             mem[key] = event[key]
     mem["synced_at"] = _now()
@@ -236,6 +236,12 @@ def review(mem: dict[str, Any], event: dict[str, Any]) -> dict[str, Any]:
         where = f" (Class {g['cls']})" if g.get("cls") else ""
         items.append({"kind": "root", "title": f"Fix the root: {g.get('root')}", "minutes": 10,
                       "why": f"It's why {g.get('stuck_on')} isn't clicking; from {g.get('chapter')}{where}", "trace_id": g.get("trace_id")})
+    if not mem.get("gaps"):  # nothing confirmed yet: check the likeliest suspect, a two-minute quiz
+        for s in (mem.get("suspects") or [])[:1]:
+            where = f"Class {s['cls']} " if s.get("cls") else ""
+            items.append({"kind": "root_check", "title": f"2-minute check: {s.get('idea')}", "minutes": 5,
+                          "why": f"{', '.join(s.get('because', [])[:3])} all rest on {where}{s.get('name')}: it may be the real gap",
+                          "chapter_id": s.get("trace_chapter_id")})
     for d in _due(mem, day)[:4]:
         items.append({"kind": "revise", "title": f"Revise {d['title']}", "why": f"Spaced revision, round {d['round']} of 3",
                       "minutes": 20, "lecture_id": d["lecture_id"]})

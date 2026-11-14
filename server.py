@@ -124,8 +124,20 @@ def ask_llm(system: str, user: str, max_tokens: int = 1400, salvage: str | None 
 
 
 def _lang(mem: dict[str, Any]) -> str:
-    return {"hi": "Hindi (Devanagari)", "hinglish": "Hinglish (Hindi in Roman letters, mixed with English)"}.get(
-        (mem.get("student") or {}).get("language") or "", "English")
+    return LANGS.get((mem.get("student") or {}).get("language") or "", "English")
+
+
+# the student's language, said so the model writes every sentence in it (technical terms and formulas stay English)
+LANGS = {
+    "hinglish": "Hinglish (Hindi in Roman letters, mixed with English)",
+    "hi": "Hindi (Devanagari)",
+    "mr": "Marathi (Devanagari script; Marathi, not Hindi: आहे, नाही, आणि)",
+    "bn": "Bengali (Bengali script)",
+    "ta": "Tamil (Tamil script)",
+    "te": "Telugu (Telugu script)",
+    "gu": "Gujarati (Gujarati script)",
+}
+TERMS = ", every sentence, with technical terms, formulas and units kept in English as Indian classrooms say them"
 
 
 def _voice(mem: dict[str, Any]) -> str:
@@ -133,7 +145,7 @@ def _voice(mem: dict[str, Any]) -> str:
     lang = _lang(mem)
     return (f"You are Edify Coach, the personal study coach of {s.get('name') or 'a student'}, preparing for "
             f"{s.get('exam') or 'their exams'}. Be warm, specific and brief, like a senior who cleared the exam. "
-            f"Write in {lang}. Never invent marks, dates or facts you were not given.")
+            f"Write in {lang}{TERMS if lang != 'English' else ''}. Never invent marks, dates or facts you were not given.")
 
 
 # ---------------------------------------------------------------------------------------------------- the jobs

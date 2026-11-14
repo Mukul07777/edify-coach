@@ -139,7 +139,7 @@ def _voice(mem: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------------------------------- the jobs
 def sync(mem: dict[str, Any], event: dict[str, Any]) -> dict[str, Any]:
     """Edify's latest picture of the student: profile, open weak spots, recent mock tests and lectures."""
-    for key in ("student", "weak", "mocks", "sessions"):
+    for key in ("student", "weak", "mocks", "sessions", "gaps"):
         if key in event:
             mem[key] = event[key]
     mem["synced_at"] = _now()
@@ -219,6 +219,11 @@ def review(mem: dict[str, Any], event: dict[str, Any]) -> dict[str, Any]:
     if nightly and mem.get("plan") and mem["plan"].get("for") == day.isoformat():
         return {"plan": mem["plan"], "skipped": "already planned"}  # the schedule fired twice: one plan a night
     items: list[dict[str, Any]] = []
+    # a root gap first: the topic above it can't hold until the idea underneath does
+    for g in (mem.get("gaps") or [])[:2]:
+        where = f" (Class {g['cls']})" if g.get("cls") else ""
+        items.append({"kind": "root", "title": f"Fix the root: {g.get('root')}", "minutes": 10,
+                      "why": f"It's why {g.get('stuck_on')} isn't clicking; from {g.get('chapter')}{where}", "trace_id": g.get("trace_id")})
     for d in _due(mem, day)[:4]:
         items.append({"kind": "revise", "title": f"Revise {d['title']}", "why": f"Spaced revision, round {d['round']} of 3",
                       "minutes": 20, "lecture_id": d["lecture_id"]})
@@ -268,7 +273,7 @@ def revised(mem: dict[str, Any], event: dict[str, Any]) -> dict[str, Any]:
 
 
 def answer(mem: dict[str, Any], question: str) -> dict[str, Any]:
-    context = {"weak": mem.get("weak", [])[:8], "mocks": mem.get("mocks", [])[:3],
+    context = {"weak": mem.get("weak", [])[:8], "mocks": mem.get("mocks", [])[:3], "root_gaps": (mem.get("gaps") or [])[:4],
                "recent_lectures": [{"title": x["title"], "key_points": x.get("key_points", [])[:3]} for x in mem["lectures"][-4:]],
                "plan": (mem.get("plan") or {}).get("items")}
     out = ask_llm(_voice(mem) + " Answer the student's question using what you know about them.",

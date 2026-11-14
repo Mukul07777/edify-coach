@@ -159,6 +159,26 @@ def _fallback_pack(lecture: dict[str, Any]) -> dict[str, Any]:
             "source": "offline"}
 
 
+def _texts(value: Any, limit: int) -> list[str]:
+    return [str(v).strip() for v in value if str(v).strip()][:limit] if isinstance(value, list) else []
+
+
+def _clean_pack(pack: dict[str, Any], fallback: dict[str, Any]) -> dict[str, Any]:
+    """The model's pack in the exact shape the app reads: a model sometimes drops a field, returns a number where
+    text belongs, or a question without its answer. Anything missing is filled from the lecture itself."""
+    practice = [{"q": str(p.get("q") or p.get("question") or "").strip(), "answer": str(p.get("answer") or "").strip()}
+                for p in pack.get("practice") or [] if isinstance(p, dict)]
+    practice = [p for p in practice if p["q"]][:5]
+    return {
+        "headline": str(pack.get("headline") or fallback["headline"]).strip(),
+        "key_points": _texts(pack.get("key_points"), 6) or fallback["key_points"],
+        "formulas": _texts(pack.get("formulas"), 8) or fallback["formulas"],
+        "practice": practice or fallback["practice"],
+        "link": str(pack.get("link") or "").strip(),
+        "source": "ai",
+    }
+
+
 def lecture_done(mem: dict[str, Any], event: dict[str, Any]) -> dict[str, Any]:
     """A revision pack for the lecture just finished, remembered with the days to revise it again."""
     lec = event.get("lecture") or {}
@@ -174,7 +194,7 @@ def lecture_done(mem: dict[str, Any], event: dict[str, Any]) -> dict[str, Any]:
     if not pack or not isinstance(pack.get("key_points"), list):
         pack = _fallback_pack(lec)
     else:
-        pack["source"] = "ai"
+        pack = _clean_pack(pack, _fallback_pack(lec))
     today = _today()
     pack.update({"lecture_id": lid, "title": lec.get("title") or "Lecture", "subject": lec.get("subject"),
                  "made_at": _now(), "revise_on": [(today + timedelta(days=d)).isoformat() for d in REVISE_AFTER],
@@ -211,6 +231,10 @@ def review(mem: dict[str, Any], event: dict[str, Any]) -> dict[str, Any]:
         pct = round(100 * (last.get("score") or 0) / last["max_score"])
         items.append({"kind": "mock", "title": f"Go over the mistakes in {last.get('title') or 'your last mock'}",
                       "why": f"You scored {pct}%: every wrong answer reviewed is a mark next time", "minutes": 25})
+    fresh = [x for x in mem["lectures"] if (x.get("made_at") or "")[:10] == _today().isoformat()]
+    if not items and fresh:  # nothing due yet, but a lecture today: a first look back while it is fresh
+        items.append({"kind": "revise", "title": f"Look over today's pack: {fresh[-1]['title']}",
+                      "why": "Ten minutes now beats an hour next week", "minutes": 10})
     if not items:
         items.append({"kind": "start", "title": "Watch one lecture with Edify", "why": "Your coach learns from every lecture you finish", "minutes": 45})
 
